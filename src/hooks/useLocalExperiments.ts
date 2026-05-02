@@ -1,0 +1,5 @@
+import { useEffect, useState } from "react";
+import type { SavedExperiment, SimulationState } from "../types";
+const STORAGE_KEY = "chronobreak.experiments";
+function readExperiments(): SavedExperiment[] { try { const raw = localStorage.getItem(STORAGE_KEY); if (!raw) return []; return JSON.parse(raw) as SavedExperiment[]; } catch { return []; } }
+export function useLocalExperiments() { const [experiments, setExperiments] = useState<SavedExperiment[]>([]); useEffect(() => { setExperiments(readExperiments()); }, []); useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(experiments)); }, [experiments]); function saveExperiment(state: SimulationState) { const createdAt = new Date().toISOString(); const experiment: SavedExperiment = { id: crypto.randomUUID(), name: `Experiment ${experiments.length + 1}`, createdAt, state }; setExperiments((current) => [experiment, ...current].slice(0, 8)); } function deleteExperiment(id: string) { setExperiments((current) => current.filter((experiment) => experiment.id !== id)); } function clearExperiments() { setExperiments([]); } return { experiments, saveExperiment, deleteExperiment, clearExperiments }; }

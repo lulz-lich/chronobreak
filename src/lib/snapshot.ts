@@ -1,0 +1,1 @@
+export function exportCanvasAsPng(filename = "chronobreak-snapshot.png") { const canvas = document.querySelector("canvas"); if (!canvas) return; const link = document.createElement("a"); link.download = filename; link.href = canvas.toDataURL("image/png"); link.click(); }
