@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { SimulationState } from "../types";
 import { clamp } from "../lib/math";
-import { schwarzschildRadiusPixels } from "../lib/relativity";
+import { metricSummary, schwarzschildRadiusPixels } from "../lib/relativity";
 
 type Props = {
   state: SimulationState;
@@ -35,6 +35,8 @@ function disk(
   cy: number,
   radius: number,
   spin: number,
+  observedFrequency: number,
+  curvatureCoupling: number,
   time: number
 ) {
   ctx.save();
@@ -43,11 +45,13 @@ function disk(
   ctx.scale(1, 0.26);
 
   const gradient = ctx.createLinearGradient(-radius * 2.3, 0, radius * 2.3, 0);
-  gradient.addColorStop(0, "rgba(34, 211, 238, 0.01)");
+  const blueshift = clamp(observedFrequency, 0.4, 1.3);
+  const heat = clamp(curvatureCoupling / 5, 0, 1);
+  gradient.addColorStop(0, `rgba(${40 + heat * 120}, ${160 + blueshift * 60}, 238, 0.03)`);
   gradient.addColorStop(0.18, "rgba(34, 211, 238, 0.32)");
   gradient.addColorStop(0.42, "rgba(248, 250, 252, 0.9)");
   gradient.addColorStop(0.62, "rgba(168, 85, 247, 0.62)");
-  gradient.addColorStop(0.82, "rgba(251, 113, 133, 0.42)");
+  gradient.addColorStop(0.82, `rgba(${251}, ${113 + heat * 80}, ${133 - heat * 90}, 0.42)`);
   gradient.addColorStop(1, "rgba(34, 211, 238, 0.02)");
 
   ctx.strokeStyle = gradient;
@@ -82,13 +86,15 @@ function photons(
   height: number,
   eventRadius: number,
   observerRadius: number,
+  lensing: number,
   time: number
 ) {
-  const bend = clamp((eventRadius / observerRadius) * 150, 22, 118);
-
   for (let i = 0; i < 11; i++) {
     const y = height * 0.2 + i * 30;
     const offset = (i - 5) * 10;
+    const impact = Math.max(8, Math.abs(offset) + eventRadius * 0.55);
+    const alpha = clamp((2 * eventRadius) / impact, 0.02, 2.2);
+    const bend = clamp((eventRadius / observerRadius) * 110 * (1 + lensing * 0.45) * alpha, 18, 190);
 
     ctx.strokeStyle =
       i === 5 ? "rgba(248,250,252,0.9)" : "rgba(103,232,249,0.34)";
@@ -256,6 +262,10 @@ export function BlackHoleCanvas({ state }: Props) {
 
   useEffect(() => {
     let frame = 0;
+    let lastTime = 0;
+    let orbitalTheta = 0;
+    let radialVelocity = 0;
+    let radialOffset = 0;
 
     const canvasElement = ref.current;
 
@@ -291,6 +301,7 @@ export function BlackHoleCanvas({ state }: Props) {
       const rs = schwarzschildRadiusPixels(state.mass);
       const eventRadius = clamp(rs, 40, 132);
       const observerRadius = clamp(state.observerRadius, eventRadius + 16, 270);
+      const metrics = metricSummary(state.mass, observerRadius, state.spin);
 
       ctx.clearRect(0, 0, width, height);
 
@@ -311,10 +322,10 @@ export function BlackHoleCanvas({ state }: Props) {
       ctx.fillRect(0, 0, width, height);
 
       stars(ctx, width, height, time);
-      disk(ctx, cx, cy, eventRadius, state.spin, time);
+      disk(ctx, cx, cy, eventRadius, state.spin, metrics.observedFrequency, metrics.curvatureCoupling, time);
 
       if (state.mode === "photon") {
-        photons(ctx, width, height, eventRadius, observerRadius, time);
+        photons(ctx, width, height, eventRadius, observerRadius, metrics.lensing, time);
       }
 
       if (state.mode === "cones") {
@@ -326,7 +337,7 @@ export function BlackHoleCanvas({ state }: Props) {
       }
 
       if (state.mode === "time") {
-        timeGrid(ctx, width, height, eventRadius, time);
+        timeGrid(ctx, width, height, eventRadius * (1 + metrics.curvatureCoupling * 0.08), time);
       }
 
       const glow = ctx.createRadialGradient(
@@ -380,9 +391,20 @@ export function BlackHoleCanvas({ state }: Props) {
 
       ctx.setLineDash([]);
 
-      const angle = time * 0.00035 + state.spin * Math.PI * 2;
-      const ox = cx + Math.cos(angle) * observerRadius;
-      const oy = cy + Math.sin(angle) * observerRadius * 0.55;
+      const dt = Math.max(0.001, Math.min(0.05, (time - lastTime) / 1000 || 0.016));
+      lastTime = time;
+      const angularVelocity = 0.45 * metrics.orbitalVelocity + 0.1 * metrics.frameDragging + 0.08;
+      orbitalTheta += dt * angularVelocity * (1 + metrics.precessionRate * 0.2);
+      const radialForce = -metrics.potentialGradient * 14 - radialOffset * (0.12 + metrics.radialEpicyclic * 2.5);
+      radialVelocity += radialForce * dt;
+      radialVelocity *= 0.985 - metrics.tidal * 0.02;
+      radialOffset += radialVelocity * dt;
+      radialOffset = clamp(radialOffset, -24, 24);
+      const angle = orbitalTheta + state.spin * Math.PI * 2;
+      const eccentricity = 0.52 - metrics.frameDragging * 0.12 + metrics.lensing * 0.02 + (1 - metrics.specificE) * 0.08;
+      const dynamicRadius = observerRadius + radialOffset;
+      const ox = cx + Math.cos(angle) * dynamicRadius;
+      const oy = cy + Math.sin(angle) * dynamicRadius * eccentricity;
 
       ctx.fillStyle = "rgba(224,242,254,1)";
       ctx.strokeStyle = "rgba(56,189,248,1)";
@@ -396,7 +418,7 @@ export function BlackHoleCanvas({ state }: Props) {
       ctx.fillStyle = "rgba(226,232,240,.8)";
       ctx.font =
         "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-      ctx.fillText("observer", ox + 12, oy - 10);
+      ctx.fillText(`observer v=${(metrics.orbitalVelocity * 100).toFixed(1)}%c`, ox + 12, oy - 10);
 
       frame = requestAnimationFrame(draw);
     };
