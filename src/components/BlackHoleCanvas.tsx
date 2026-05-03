@@ -407,17 +407,47 @@ export function BlackHoleCanvas({ state }: Props) {
       const oy = cy + Math.sin(angle) * dynamicRadius * eccentricity;
 
       ctx.fillStyle = "rgba(224,242,254,1)";
-      ctx.strokeStyle = "rgba(56,189,248,1)";
+      ctx.strokeStyle = "rgba(248,250,252,0.88)";
       ctx.lineWidth = 3;
 
       ctx.beginPath();
-      ctx.arc(ox, oy, 7, 0, Math.PI * 2);
+      ctx.arc(ox, oy, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = "rgba(226,232,240,.8)";
+      const distantObserverRadius = clamp(
+        Math.min(width, height) * 0.42,
+        observerRadius + 30,
+        Math.min(width, height) * 0.47
+      );
+      const distantAngle = -Math.PI * 0.2;
+      const dx = cx + Math.cos(distantAngle) * distantObserverRadius;
+      const dy = cy + Math.sin(distantAngle) * distantObserverRadius * 0.88;
+
+      ctx.strokeStyle = "rgba(56,189,248,0.45)";
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 10]);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(dx, dy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "rgba(56,189,248,0.94)";
+      ctx.strokeStyle = "rgba(34,211,238,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(226,232,240,0.92)";
       ctx.font =
-        "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+        "11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+      ctx.fillText(`local observer`, ox + 10, oy + 4);
+      ctx.fillText(`distant observer`, dx + 10, dy + 4);
+
+      ctx.fillStyle = "rgba(226,232,240,.8)";
       ctx.fillText(`observer v=${(metrics.orbitalVelocity * 100).toFixed(1)}%c`, ox + 12, oy - 10);
 
       frame = requestAnimationFrame(draw);
@@ -445,7 +475,14 @@ export function BlackHoleCanvas({ state }: Props) {
 
       <div className="canvasHud bottom">
         <span>Live Canvas Simulation</span>
-        <small>visual approximation, not full GR solver</small>
+        <small>visual approximation, not full GR solver — compare local and distant observers.</small>
+      </div>
+
+      <div className="observerLegend">
+        <span className="legendDot local"></span>
+        <small>Local observer</small>
+        <span className="legendDot distant"></span>
+        <small>Distant observer</small>
       </div>
     </div>
   );
